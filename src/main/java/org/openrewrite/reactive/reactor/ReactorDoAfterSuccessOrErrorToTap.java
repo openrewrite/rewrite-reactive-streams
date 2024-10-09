@@ -82,7 +82,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                     TypeTree.build(monoType.getClassName()).withType(monoType));
 
                     // These are the statements of the `doAfterSuccessOrError` BiConsumer lambda body
-                    List<Statement> doAfterSuccesOrErrorStatements = ((J.Block)((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
+                    List<Statement> doAfterSuccesOrErrorStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
                     mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
                         if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
                             arg = ((J.Lambda) arg).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().withStatements(ListUtils.map(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().getStatements(), stmt -> {
