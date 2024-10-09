@@ -19,15 +19,13 @@ import org.openrewrite.ExecutionContext;
 import org.openrewrite.Preconditions;
 import org.openrewrite.Recipe;
 import org.openrewrite.TreeVisitor;
+import org.openrewrite.internal.ListUtils;
 import org.openrewrite.java.JavaIsoVisitor;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaTemplate;
 import org.openrewrite.java.MethodMatcher;
 import org.openrewrite.java.search.FindMethods;
-import org.openrewrite.java.tree.J;
-import org.openrewrite.java.tree.JavaType;
-import org.openrewrite.java.tree.TypeTree;
-import org.openrewrite.java.tree.TypeUtils;
+import org.openrewrite.java.tree.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -55,33 +53,46 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
                     JavaType.FullyQualified monoType = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0));
                     List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0)).getParameters().getParameters().stream().map(J.VariableDeclarations.class::cast).collect(Collectors.toList());
-                    String template = "Mono.tap(() -> new DefaultSignalListener<>() {\n" +
+                    String template = "#{any()}.tap(() -> new DefaultSignalListener<>() {\n" +
                                       "        @Override\n" +
                                       "        public void doFinally(SignalType terminationType) {\n" +
                                       "            // this will be replaced\n" +
                                       "        }\n" +
                                       "\n" +
                                       "        @Override\n" +
-                                      "        public void doOnNext(#{any()} #{any()}) {\n" +
+                                      "        public void doOnNext(#{any()} " + doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName() + ") {\n" +
                                       "            // this will be replaced\n" +
                                       "        }\n" +
                                       "\n" +
                                       "        @Override\n" +
-                                      "        public void doOnError(Throwable #{any()}) {\n" +
+                                      "        public void doOnError(Throwable " + doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName() + ") {\n" +
                                       "            // this will be replaced\n" +
                                       "        }\n" +
                                       "    }\n" +
-                                      ")";
+                                      ");";
                     J.MethodInvocation replacement = JavaTemplate
                             .builder(template)
+                            .contextSensitive()
                             .imports("reactor.core.observability.DefaultSignalListener", "reactor.core.publisher.Mono", "reactor.core.publisher.SignalType")
                             .doAfterVariableSubstitution(System.out::println)
                             .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+"))
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace(),
-                                    TypeTree.build(monoType.getClassName()).withType(monoType),
-                                    doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getName(),
-                                    doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getName());
+                                    mi.getSelect(),
+                                    TypeTree.build(monoType.getClassName()).withType(monoType));
+
+                    // These are the statements of the `doAfterSuccessOrError` BiConsumer lambda body
+                    List<Statement> doAfterSuccesOrErrorStatements = ((J.Block)((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
+                    mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
+                        if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
+                            arg = ((J.Lambda) arg).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().withStatements(ListUtils.map(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().getStatements(), stmt -> {
+                                // here we have access to the method declarations inside the `DefaultSignalListener` inside the tap operator
+                                // We could check the `doAfterSuccessOrError` statements and based on if they use a certain identifier place them in the correct method's body
+                                return stmt;
+                            }))));
+                        }
+                        return arg;
+                    }));
                 }
                 return mi;
             }
