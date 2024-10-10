@@ -31,7 +31,9 @@ import org.openrewrite.java.tree.Statement;
 import org.openrewrite.java.tree.TypeUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -67,17 +69,14 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     String template = "#{any()}.tap(() -> new DefaultSignalListener<>() {\n" +
                                       "        @Override\n" +
                                       "        public void doFinally(SignalType terminationType) {\n" +
-                                      "            // this will be replaced\n" +
                                       "        }\n" +
                                       "\n" +
                                       "        @Override\n" +
                                       "        public void doOnNext(" + monoType.getClassName() + " " + doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName() + ") {\n" +
-                                      "            // this will be replaced\n" +
                                       "        }\n" +
                                       "\n" +
                                       "        @Override\n" +
                                       "        public void doOnError(Throwable " + doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName() + ") {\n" +
-                                      "            // this will be replaced\n" +
                                       "        }\n" +
                                       "    }\n" +
                                       ");";
@@ -94,19 +93,9 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     // These are the statements of the `doAfterSuccessOrError` BiConsumer lambda body
                     List<Statement> doAfterSuccesOrErrorStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
                     J.Identifier resultIdentifier = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getName();
-                    List<Statement> resultStatements = new ArrayList<>();
                     J.Identifier errorIdentifier = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getName();
-                    List<Statement> errorStatements = new ArrayList<>();
-                    List<Statement> unidentifiedStatements = new ArrayList<>();
-                    for (Statement olStmt : doAfterSuccesOrErrorStatements) {
-                        if (usesIdentifier(olStmt, resultIdentifier)) {
-                            resultStatements.add(olStmt);
-                        } else if (usesIdentifier(olStmt, errorIdentifier)) {
-                            errorStatements.add(olStmt);
-                        } else {
-                            unidentifiedStatements.add(olStmt);
-                        }
-                    }
+                    Map<J.Identifier, List<Statement>> statementsByIdentifier = extractStatements(doAfterSuccessOrErrorLambdaParams, doAfterSuccesOrErrorStatements, resultIdentifier, errorIdentifier);
+
                     mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
                         if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
                             arg = ((J.Lambda) arg).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().withStatements(ListUtils.map(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().getStatements(), stmt -> {
@@ -115,13 +104,13 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                 if (stmt instanceof J.MethodDeclaration) {
                                     J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
                                     if (DEFAULT_SIGNAL_LISTENER_DO_FINALLY.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(unidentifiedStatements));
+                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(null)));
                                     }
                                     if (DEFAULT_SIGNAL_LISTENER_DO_ON_NEXT.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(resultStatements));
+                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(resultIdentifier)));
                                     }
                                     if (DEFAULT_SIGNAL_LISTENER_DO_ON_ERROR.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(errorStatements));
+                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(errorIdentifier)));
                                     }
                                 }
                                 return stmt;
@@ -139,13 +128,87 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
 
                     @Override
                     public J.Identifier visitIdentifier(J.Identifier identifier, AtomicBoolean usesIdentifier) {
-                        if (ident.getFieldType().equals(identifier.getFieldType()) && TypeUtils.isOfType(identifier.getType(), ident.getType()) && identifier.getSimpleName().equals(ident.getSimpleName())) {
+                        if (identifiersEqual(ident, identifier)) {
                             usesIdentifier.set(true);
                         }
                         return identifier;
                     }
                 }.visit(olStmt, usesIdentifier);
                 return usesIdentifier.get();
+            }
+
+            private boolean identifiersEqual(J.Identifier ident, J.Identifier identifier) {
+                return ident.getFieldType().equals(identifier.getFieldType()) && TypeUtils.isOfType(identifier.getType(), ident.getType()) && identifier.getSimpleName().equals(ident.getSimpleName());
+            }
+
+            private Map<J.Identifier, List<Statement>> extractStatements(List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams, List<Statement> doAfterSuccesOrErrorStatements, J.Identifier resultIdentifier, J.Identifier errorIdentifier) {
+                List<Statement> resultStatements = new ArrayList<>();
+                List<Statement> errorStatements = new ArrayList<>();
+                List<Statement> unidentifiedStatements = new ArrayList<>();
+                for (Statement olStmt : doAfterSuccesOrErrorStatements) {
+                    if (olStmt instanceof J.If) {
+                        if (((J.If) olStmt).getIfCondition().getTree() instanceof J.Binary) {
+                            J.Binary ifCheck = (J.Binary) ((J.If) olStmt).getIfCondition().getTree();
+                            if ((ifCheck.getLeft() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getLeft(), resultIdentifier)) || (ifCheck.getRight() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getRight(), resultIdentifier))) {
+                                if (ifCheck.getOperator().equals(J.Binary.Type.NotEqual)) {
+                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
+                                        if (usesIdentifier(thenStatement, resultIdentifier)) {
+                                            resultStatements.add(thenStatement);
+                                        } else {
+                                            unidentifiedStatements.add(thenStatement);
+                                        }
+                                    }
+                                    errorStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                }
+                                if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
+                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
+                                        if (usesIdentifier(thenStatement, errorIdentifier)) {
+                                            errorStatements.add(thenStatement);
+                                        } else {
+                                            unidentifiedStatements.add(thenStatement);
+                                        }
+                                    }
+                                    resultStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                }
+                            }
+                            if ((ifCheck.getLeft() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getLeft(), errorIdentifier)) || (ifCheck.getRight() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getRight(), errorIdentifier))) {
+                                if (ifCheck.getOperator().equals(J.Binary.Type.NotEqual)) {
+                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
+                                        if (usesIdentifier(thenStatement, errorIdentifier)) {
+                                            errorStatements.add(thenStatement);
+                                        } else {
+                                            unidentifiedStatements.add(thenStatement);
+                                        }
+                                    }
+                                    resultStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                }
+                                if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
+                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
+                                        if (usesIdentifier(thenStatement, resultIdentifier)) {
+                                            resultStatements.add(thenStatement);
+                                        } else {
+                                            unidentifiedStatements.add(thenStatement);
+                                        }
+                                    }
+                                    errorStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                }
+                            }
+                        }
+                    } else {
+                        if (usesIdentifier(olStmt, resultIdentifier)) {
+                            resultStatements.add(olStmt);
+                        } else if (usesIdentifier(olStmt, errorIdentifier)) {
+                            errorStatements.add(olStmt);
+                        } else {
+                            unidentifiedStatements.add(olStmt);
+                        }
+                    }
+                }
+                return new HashMap<J.Identifier, List<Statement>>() {{
+                    put(resultIdentifier, resultStatements);
+                    put(errorIdentifier, errorStatements);
+                    put(null, unidentifiedStatements);
+                }};
             }
         });
     }
