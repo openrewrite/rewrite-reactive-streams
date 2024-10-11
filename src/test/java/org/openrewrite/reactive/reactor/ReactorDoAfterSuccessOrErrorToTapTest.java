@@ -44,7 +44,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         if (error != null) {
                             System.out.println("error" + error);
@@ -96,7 +96,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
 
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         doSomething();
                         if (error != null) {
@@ -172,7 +172,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         if (error == null) {
                             System.out.println("success" + result);
@@ -225,7 +225,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         if (error != null) {
                             System.out.println("error" + error);
@@ -276,9 +276,9 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-
+            
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         System.out.println("other logs");
                         if (error != null) {
@@ -355,7 +355,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             
             class SomeClass {
-                void doSomething(Mono<String> mono){
+                void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                         if (error != null) {
                             System.out.println("error" + error);
