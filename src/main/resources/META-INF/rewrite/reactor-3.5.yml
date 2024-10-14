@@ -36,6 +36,7 @@ recipeList:
   - org.openrewrite.java.ChangeMethodName:
       methodPattern: reactor.core.publisher.Mono deferWithContext(..)
       newMethodName: deferContextual
+  - org.openrewrite.reactive.reactor.ReactorDoAfterSuccessOrErrorToTap
   - org.openrewrite.java.ChangeMethodName:
       methodPattern: reactor.core.scheduler.Schedulers elastic()
       newMethodName: boundedElastic
