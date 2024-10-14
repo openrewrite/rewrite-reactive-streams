@@ -88,7 +88,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace());
 
-                    String template = "#{any()}.tap(() -> #{any()}\n" +
+                    String template = "#{any(reactor.core.publisher.Mono)}.tap(() -> #{any()}\n" +
                                       ");";
                     J.MethodInvocation replacement = JavaTemplate
                             .builder(template)
