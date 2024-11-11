@@ -15,6 +15,7 @@
  */
 package org.openrewrite.reactive.reactor;
 
+import org.intellij.lang.annotations.Language;
 import org.junit.jupiter.api.Test;
 import org.openrewrite.DocumentExample;
 import org.openrewrite.InMemoryExecutionContext;
@@ -23,14 +24,32 @@ import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
 
 import static org.openrewrite.java.Assertions.java;
+import static org.openrewrite.maven.Assertions.pomXml;
 
 class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
+
+    @Language("xml")
+    private static final String POM_XML_REACTOR_CORE_3_4 = """
+      <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>foo</artifactId>
+          <version>1.0.0</version>
+          <dependencies>
+              <dependency>
+                  <groupId>io.projectreactor</groupId>
+                  <artifactId>reactor-core</artifactId>
+                  <version>3.4.39</version>
+              </dependency>
+          </dependencies>
+      </project>
+      """;
 
     @Override
     public void defaults(RecipeSpec spec) {
         spec
           .parser(JavaParser.fromJavaVersion()
-            .classpathFromResources(new InMemoryExecutionContext(), "reactor-core-3.4", "reactive-streams"))
+            .classpathFromResources(new InMemoryExecutionContext(), "reactor-core-3.5", "reactive-streams"))
           .recipe(new ReactorDoAfterSuccessOrErrorToTap());
     }
 
@@ -42,7 +61,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
@@ -60,26 +79,68 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    System.out.println("other logs");
-                                }
-            
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                }
-            
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            System.out.println("other logs");
+                        }
+
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                        }
+
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                        }
+                    }).subscribe();
+                }
+            }
+            """
+          )
+        );
+    }
+
+    @Test
+    void emptyLambda() {
+        //language=java
+        rewriteRun(
+          pomXml(POM_XML_REACTOR_CORE_3_4),
+          java(
+            """
+            import reactor.core.publisher.Mono;
+
+            class SomeClass {
+                void doSomething(Mono<String> mono) {
+                    mono.doAfterSuccessOrError((result, error) -> {
+                    }).subscribe();
+                }
+            }
+            """,
+            """
+            import reactor.core.observability.DefaultSignalListener;
+            import reactor.core.publisher.Mono;
+            import reactor.core.publisher.SignalType;
+
+            class SomeClass {
+                void doSomething(Mono<String> mono) {
+                    mono.tap(() -> new DefaultSignalListener<>() {
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                        }
+
+                        @Override
+                        public void doOnNext(String result) {
+                        }
+
+                        @Override
+                        public void doOnError(Throwable error) {
+                        }
+                    }).subscribe();
                 }
             }
             """
@@ -124,7 +185,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
@@ -133,13 +194,13 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                     doSomething();
                                     System.out.println("other logs");
                                 }
-            
+
                                 @Override
                                 public void doOnNext(String result) {
                                     System.out.println("success" + result);
                                     doSomething(result);
                                 }
-            
+
                                 @Override
                                 public void doOnError(Throwable error) {
                                     System.out.println("error" + error);
@@ -170,7 +231,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
@@ -189,7 +250,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
@@ -197,12 +258,12 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                 public void doFinally(SignalType terminationType) {
                                     System.out.println("other logs");
                                 }
-            
+
                                 @Override
                                 public void doOnNext(String result) {
                                     System.out.println("success" + result);
                                 }
-            
+
                                 @Override
                                 public void doOnError(Throwable error) {
                                     System.out.println("error" + error);
@@ -223,7 +284,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
@@ -242,7 +303,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
@@ -250,12 +311,12 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                 public void doFinally(SignalType terminationType) {
                                     System.out.println("other logs");
                                 }
-            
+
                                 @Override
                                 public void doOnNext(String result) {
                                     System.out.println("success" + result);
                                 }
-            
+
                                 @Override
                                 public void doOnError(Throwable error) {
                                     System.out.println("error" + error);
@@ -276,7 +337,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
@@ -307,7 +368,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
@@ -316,13 +377,13 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                     System.out.println("other logs");
                                     doSomething();
                                 }
-            
+
                                 @Override
                                 public void doOnNext(String result) {
                                     System.out.println("success" + result);
                                     doSomething(result);
                                 }
-            
+
                                 @Override
                                 public void doOnError(Throwable error) {
                                     System.out.println("error" + error);
@@ -353,7 +414,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           java(
             """
             import reactor.core.publisher.Mono;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
@@ -370,7 +431,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.observability.DefaultSignalListener;
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
-            
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
@@ -378,12 +439,12 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                 public void doFinally(SignalType terminationType) {
                                     System.out.println("other logs");
                                 }
-            
+
                                 @Override
                                 public void doOnNext(String result) {
                                     System.out.println("success" + result);
                                 }
-            
+
                                 @Override
                                 public void doOnError(Throwable error) {
                                     System.out.println("error" + error);
