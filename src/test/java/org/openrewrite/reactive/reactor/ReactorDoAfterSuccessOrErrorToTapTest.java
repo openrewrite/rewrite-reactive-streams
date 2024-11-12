@@ -28,28 +28,11 @@ import static org.openrewrite.maven.Assertions.pomXml;
 
 class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
-    @Language("xml")
-    private static final String POM_XML_REACTOR_CORE_3_4 = """
-      <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>foo</artifactId>
-          <version>1.0.0</version>
-          <dependencies>
-              <dependency>
-                  <groupId>io.projectreactor</groupId>
-                  <artifactId>reactor-core</artifactId>
-                  <version>3.4.39</version>
-              </dependency>
-          </dependencies>
-      </project>
-      """;
-
     @Override
     public void defaults(RecipeSpec spec) {
         spec
           .parser(JavaParser.fromJavaVersion()
-            .classpathFromResources(new InMemoryExecutionContext(), "reactor-core-3.5", "reactive-streams"))
+            .classpathFromResources(new InMemoryExecutionContext(), "reactor-core-3.4", "reactive-streams"))
           .recipe(new ReactorDoAfterSuccessOrErrorToTap());
     }
 
@@ -109,7 +92,6 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
     void emptyLambda() {
         //language=java
         rewriteRun(
-          pomXml(POM_XML_REACTOR_CORE_3_4),
           java(
             """
             import reactor.core.publisher.Mono;

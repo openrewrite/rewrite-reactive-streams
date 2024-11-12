@@ -84,17 +84,15 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                             .contextSensitive()
                             .doAfterVariableSubstitution(System.out::println)
                             .imports(DEFAULT_SIGNAL_LISTENER, SIGNAL_TYPE)
-                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+"))
+                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams"))
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace());
 
-                    String template = "#{any(reactor.core.publisher.Mono)}.tap(() -> #{any()}\n" +
-                                      ");";
                     J.MethodInvocation replacement = JavaTemplate
-                            .builder(template)
+                            .builder("#{any()}.tap(() -> #{any()})")
                             .contextSensitive()
                             .doAfterVariableSubstitution(System.out::println)
-                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+"))
+                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams"))
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect(), newDefaultSignalListener);
                     maybeAddImport(DEFAULT_SIGNAL_LISTENER);
