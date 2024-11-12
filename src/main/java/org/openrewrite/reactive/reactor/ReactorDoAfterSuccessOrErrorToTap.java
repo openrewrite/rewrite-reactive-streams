@@ -25,6 +25,7 @@ import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaTemplate;
 import org.openrewrite.java.MethodMatcher;
 import org.openrewrite.java.search.FindMethods;
+import org.openrewrite.java.tree.Expression;
 import org.openrewrite.java.tree.J;
 import org.openrewrite.java.tree.JavaType;
 import org.openrewrite.java.tree.Statement;
@@ -37,15 +38,17 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import static org.openrewrite.java.tree.J.Binary.Type.Equal;
+import static org.openrewrite.java.tree.J.Binary.Type.NotEqual;
+
 public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
 
     private static final String DEFAULT_SIGNAL_LISTENER = "reactor.core.observability.DefaultSignalListener";
     private static final String SIGNAL_TYPE = "reactor.core.publisher.SignalType";
 
     private static final MethodMatcher DO_AFTER_SUCCESS_OR_ERROR = new MethodMatcher("reactor.core.publisher.Mono doAfterSuccessOrError(..)");
-    private static final MethodMatcher DEFAULT_SIGNAL_LISTENER_DO_FINALLY = new MethodMatcher("* doFinally(..)");
-    private static final MethodMatcher DEFAULT_SIGNAL_LISTENER_DO_ON_ERROR = new MethodMatcher("* doOnError(..)");
-    private static final MethodMatcher DEFAULT_SIGNAL_LISTENER_DO_ON_NEXT = new MethodMatcher("* doOnNext(..)");
+    private static final MethodMatcher DO_ON_ERROR = new MethodMatcher("* doOnError(..)");
+    private static final MethodMatcher DO_ON_NEXT = new MethodMatcher("* doOnNext(..)");
 
     @Override
     public String getDisplayName() {
@@ -90,28 +93,22 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     maybeAddImport(DEFAULT_SIGNAL_LISTENER);
                     maybeAddImport(SIGNAL_TYPE);
 
-                    // These are the statements of the `doAfterSuccessOrError` BiConsumer lambda body
                     List<Statement> doAfterSuccesOrErrorStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
                     J.Identifier resultIdentifier = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getName();
                     J.Identifier errorIdentifier = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getName();
-                    Map<J.Identifier, List<Statement>> statementsByIdentifier = extractStatements(doAfterSuccessOrErrorLambdaParams, doAfterSuccesOrErrorStatements, resultIdentifier, errorIdentifier);
+                    Map<J.Identifier, List<Statement>> statementsByIdentifier = extractStatements(doAfterSuccesOrErrorStatements, resultIdentifier, errorIdentifier);
 
                     mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
                         if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
-                            arg = ((J.Lambda) arg).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).withBody(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().withStatements(ListUtils.map(((J.NewClass) ((J.Lambda) arg).getBody()).getBody().getStatements(), stmt -> {
-                                // here we have access to the method declarations inside the `DefaultSignalListener` inside the tap operator
-                                // We could check the `doAfterSuccessOrError` statements and based on if they use a certain identifier place them in the correct method's body
+                            J.NewClass dfltSgnlClass = (J.NewClass) ((J.Lambda) arg).getBody();
+                            arg = ((J.Lambda) arg).withBody(dfltSgnlClass.withBody(dfltSgnlClass.getBody().withStatements(ListUtils.map(dfltSgnlClass.getBody().getStatements(), stmt -> {
                                 if (stmt instanceof J.MethodDeclaration) {
                                     J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
-                                    if (DEFAULT_SIGNAL_LISTENER_DO_FINALLY.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(null)));
-                                    }
-                                    if (DEFAULT_SIGNAL_LISTENER_DO_ON_NEXT.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(resultIdentifier)));
-                                    }
-                                    if (DEFAULT_SIGNAL_LISTENER_DO_ON_ERROR.matches((J.MethodDeclaration) stmt, cd)) {
-                                        stmt = ((J.MethodDeclaration) stmt).withBody(((J.MethodDeclaration) stmt).getBody().withStatements(statementsByIdentifier.get(errorIdentifier)));
-                                    }
+                                    J.MethodDeclaration md = (J.MethodDeclaration) stmt;
+                                    stmt = md.withBody(md.getBody().withStatements(
+                                            DO_ON_NEXT.matches(md, cd) ? statementsByIdentifier.get(resultIdentifier) :
+                                            DO_ON_ERROR.matches(md, cd) ? statementsByIdentifier.get(errorIdentifier) : statementsByIdentifier.get(null)
+                                    ));
                                 }
                                 return stmt;
                             }))));
@@ -122,75 +119,33 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 return maybeAutoFormat(method, mi, ctx);
             }
 
-            private boolean usesIdentifier(Statement olStmt, J.Identifier ident) {
-                AtomicBoolean usesIdentifier = new AtomicBoolean(false);
-                new JavaIsoVisitor<AtomicBoolean>() {
-
-                    @Override
-                    public J.Identifier visitIdentifier(J.Identifier identifier, AtomicBoolean usesIdentifier) {
-                        if (identifiersEqual(ident, identifier)) {
-                            usesIdentifier.set(true);
-                        }
-                        return identifier;
-                    }
-                }.visit(olStmt, usesIdentifier);
-                return usesIdentifier.get();
-            }
-
-            private boolean identifiersEqual(J.Identifier ident, J.Identifier identifier) {
-                return ident.getFieldType().equals(identifier.getFieldType()) && TypeUtils.isOfType(identifier.getType(), ident.getType()) && identifier.getSimpleName().equals(ident.getSimpleName());
-            }
-
-            private Map<J.Identifier, List<Statement>> extractStatements(List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams, List<Statement> doAfterSuccesOrErrorStatements, J.Identifier resultIdentifier, J.Identifier errorIdentifier) {
+            private Map<J.Identifier, List<Statement>> extractStatements(List<Statement> doAfterSuccesOrErrorStatements, J.Identifier resultIdentifier, J.Identifier errorIdentifier) {
                 List<Statement> resultStatements = new ArrayList<>();
                 List<Statement> errorStatements = new ArrayList<>();
                 List<Statement> unidentifiedStatements = new ArrayList<>();
                 for (Statement olStmt : doAfterSuccesOrErrorStatements) {
                     if (olStmt instanceof J.If) {
-                        if (((J.If) olStmt).getIfCondition().getTree() instanceof J.Binary) {
-                            J.Binary ifCheck = (J.Binary) ((J.If) olStmt).getIfCondition().getTree();
-                            if ((ifCheck.getLeft() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getLeft(), resultIdentifier)) || (ifCheck.getRight() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getRight(), resultIdentifier))) {
-                                if (ifCheck.getOperator().equals(J.Binary.Type.NotEqual)) {
-                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
-                                        if (usesIdentifier(thenStatement, resultIdentifier)) {
-                                            resultStatements.add(thenStatement);
-                                        } else {
-                                            unidentifiedStatements.add(thenStatement);
-                                        }
-                                    }
-                                    addElseStatements(errorStatements, (J.If) olStmt);
+                        J.If _if = (J.If) olStmt;
+                        if (_if.getIfCondition().getTree() instanceof J.Binary) {
+                            J.Binary ifCheck = (J.Binary) _if.getIfCondition().getTree();
+                            if (isEqual(ifCheck.getLeft(), resultIdentifier) || isEqual(ifCheck.getRight(), resultIdentifier)) {
+                                if (ifCheck.getOperator().equals(NotEqual)) {
+                                    addIfStatements(_if, resultStatements, unidentifiedStatements, resultIdentifier);
+                                    addElseStatements(_if, errorStatements);
                                 }
-                                if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
-                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
-                                        if (usesIdentifier(thenStatement, errorIdentifier)) {
-                                            errorStatements.add(thenStatement);
-                                        } else {
-                                            unidentifiedStatements.add(thenStatement);
-                                        }
-                                    }
-                                    addElseStatements(resultStatements, (J.If) olStmt);
+                                if (ifCheck.getOperator().equals(Equal)) {
+                                    addIfStatements(_if, errorStatements, unidentifiedStatements, errorIdentifier);
+                                    addElseStatements(_if, resultStatements);
                                 }
                             }
-                            if ((ifCheck.getLeft() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getLeft(), errorIdentifier)) || (ifCheck.getRight() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getRight(), errorIdentifier))) {
-                                if (ifCheck.getOperator().equals(J.Binary.Type.NotEqual)) {
-                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
-                                        if (usesIdentifier(thenStatement, errorIdentifier)) {
-                                            errorStatements.add(thenStatement);
-                                        } else {
-                                            unidentifiedStatements.add(thenStatement);
-                                        }
-                                    }
-                                    addElseStatements(resultStatements, (J.If) olStmt);
+                            if (isEqual(ifCheck.getLeft(), errorIdentifier) || isEqual(ifCheck.getRight(), errorIdentifier)) {
+                                if (ifCheck.getOperator().equals(NotEqual)) {
+                                    addIfStatements(_if, errorStatements, unidentifiedStatements, errorIdentifier);
+                                    addElseStatements(_if, resultStatements);
                                 }
-                                if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
-                                    for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
-                                        if (usesIdentifier(thenStatement, resultIdentifier)) {
-                                            resultStatements.add(thenStatement);
-                                        } else {
-                                            unidentifiedStatements.add(thenStatement);
-                                        }
-                                    }
-                                    addElseStatements(errorStatements, (J.If) olStmt);
+                                if (ifCheck.getOperator().equals(Equal)) {
+                                    addIfStatements(_if, resultStatements, unidentifiedStatements, resultIdentifier);
+                                    addElseStatements(_if, errorStatements);
                                 }
                             }
                         }
@@ -211,7 +166,39 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 }};
             }
 
-            private void addElseStatements(List<Statement> statements, J.If _if) {
+            private boolean isEqual(Expression expression, J.Identifier identifier) {
+                return expression instanceof J.Identifier && isEqual((J.Identifier) expression, identifier);
+            }
+
+            private boolean isEqual(J.Identifier ident, J.Identifier identifier) {
+                return ident.getFieldType().equals(identifier.getFieldType()) && TypeUtils.isOfType(identifier.getType(), ident.getType()) && identifier.getSimpleName().equals(ident.getSimpleName());
+            }
+
+            private boolean usesIdentifier(Statement olStmt, J.Identifier ident) {
+                AtomicBoolean usesIdentifier = new AtomicBoolean(false);
+                new JavaIsoVisitor<AtomicBoolean>() {
+                    @Override
+                    public J.Identifier visitIdentifier(J.Identifier identifier, AtomicBoolean usesIdentifier) {
+                        if (isEqual(ident, identifier)) {
+                            usesIdentifier.set(true);
+                        }
+                        return identifier;
+                    }
+                }.visit(olStmt, usesIdentifier);
+                return usesIdentifier.get();
+            }
+
+            private void addIfStatements(J.If _if, List<Statement> statements, List<Statement> unidentifiedStatements, J.Identifier identifier) {
+                for (Statement thenStatement : ((J.Block) _if.getThenPart()).getStatements()) {
+                    if (usesIdentifier(thenStatement, identifier)) {
+                        statements.add(thenStatement);
+                    } else {
+                        unidentifiedStatements.add(thenStatement);
+                    }
+                }
+            }
+
+            private void addElseStatements(J.If _if, List<Statement> statements) {
                 J.If.Else _else = _if.getElsePart();
                 if (_else != null) {
                     statements.addAll(((J.Block) _else.getBody()).getStatements());
