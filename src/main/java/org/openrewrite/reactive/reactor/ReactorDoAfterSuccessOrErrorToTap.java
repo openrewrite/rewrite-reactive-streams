@@ -66,35 +66,28 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
                     JavaType.FullyQualified monoType = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0));
                     List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0)).getParameters().getParameters().stream().map(J.VariableDeclarations.class::cast).collect(Collectors.toList());
-                    String defaultSignalListenerTemplate = "new DefaultSignalListener<>() {\n" +
-                                                           "        @Override\n" +
-                                                           "        public void doFinally(SignalType terminationType) {\n" +
-                                                           "        }\n" +
-                                                           "\n" +
-                                                           "        @Override\n" +
-                                                           "        public void doOnNext(" + monoType.getClassName() + " " + doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName() + ") {\n" +
-                                                           "        }\n" +
-                                                           "\n" +
-                                                           "        @Override\n" +
-                                                           "        public void doOnError(Throwable " + doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName() + ") {\n" +
-                                                           "        }\n" +
-                                                           "    }\n";
-                    J.NewClass newDefaultSignalListener = JavaTemplate
-                            .builder(defaultSignalListenerTemplate)
+                    String template = "#{any()}.tap(() -> new DefaultSignalListener<>() {\n" +
+                            "    @Override\n" +
+                            "    public void doFinally(SignalType terminationType) {\n" +
+                            "    }\n" +
+                            "\n" +
+                            "    @Override\n" +
+                            "    public void doOnNext(" + monoType.getClassName() + " " + doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName() + ") {\n" +
+                            "    }\n" +
+                            "\n" +
+                            "    @Override\n" +
+                            "    public void doOnError(Throwable " + doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName() + ") {\n" +
+                            "    }\n" +
+                            "})";
+                    J.MethodInvocation replacement = JavaTemplate
+                            .builder(template)
                             .contextSensitive()
                             .doAfterVariableSubstitution(System.out::println)
                             .imports(DEFAULT_SIGNAL_LISTENER, SIGNAL_TYPE)
-                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams"))
+                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams-1.+"))
                             .build()
-                            .apply(getCursor(), mi.getCoordinates().replace());
+                            .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect());
 
-                    J.MethodInvocation replacement = JavaTemplate
-                            .builder("#{any()}.tap(() -> #{any()})")
-                            .contextSensitive()
-                            .doAfterVariableSubstitution(System.out::println)
-                            .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams"))
-                            .build()
-                            .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect(), newDefaultSignalListener);
                     maybeAddImport(DEFAULT_SIGNAL_LISTENER);
                     maybeAddImport(SIGNAL_TYPE);
 

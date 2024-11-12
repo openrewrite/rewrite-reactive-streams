@@ -15,7 +15,6 @@
  */
 package org.openrewrite.reactive.reactor;
 
-import org.intellij.lang.annotations.Language;
 import org.junit.jupiter.api.Test;
 import org.openrewrite.DocumentExample;
 import org.openrewrite.InMemoryExecutionContext;
@@ -24,7 +23,6 @@ import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
 
 import static org.openrewrite.java.Assertions.java;
-import static org.openrewrite.maven.Assertions.pomXml;
 
 class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
@@ -171,25 +169,24 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    doSomething();
-                                    System.out.println("other logs");
-                                }
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            doSomething();
+                            System.out.println("other logs");
+                        }
 
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                    doSomething(result);
-                                }
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                            doSomething(result);
+                        }
 
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                    doSomething(error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                            doSomething(error);
+                        }
+                    }).subscribe();
                 }
 
                 void doSomething(){
@@ -236,22 +233,21 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    System.out.println("other logs");
-                                }
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            System.out.println("other logs");
+                        }
 
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                }
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                        }
 
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                        }
+                    }).subscribe();
                 }
             }
             """
@@ -289,22 +285,21 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    System.out.println("other logs");
-                                }
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            System.out.println("other logs");
+                        }
 
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                }
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                        }
 
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                        }
+                    }).subscribe();
                 }
             }
             """
@@ -354,25 +349,24 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    System.out.println("other logs");
-                                    doSomething();
-                                }
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            System.out.println("other logs");
+                            doSomething();
+                        }
 
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                    doSomething(result);
-                                }
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                            doSomething(result);
+                        }
 
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                    doSomething(error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                            doSomething(error);
+                        }
+                    }).subscribe();
                 }
 
                 void doSomething(){
@@ -417,22 +411,21 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                                @Override
-                                public void doFinally(SignalType terminationType) {
-                                    System.out.println("other logs");
-                                }
+                        @Override
+                        public void doFinally(SignalType terminationType) {
+                            System.out.println("other logs");
+                        }
 
-                                @Override
-                                public void doOnNext(String result) {
-                                    System.out.println("success" + result);
-                                }
+                        @Override
+                        public void doOnNext(String result) {
+                            System.out.println("success" + result);
+                        }
 
-                                @Override
-                                public void doOnError(Throwable error) {
-                                    System.out.println("error" + error);
-                                }
-                            }
-                    ).subscribe();
+                        @Override
+                        public void doOnError(Throwable error) {
+                            System.out.println("error" + error);
+                        }
+                    }).subscribe();
                 }
             }
             """
