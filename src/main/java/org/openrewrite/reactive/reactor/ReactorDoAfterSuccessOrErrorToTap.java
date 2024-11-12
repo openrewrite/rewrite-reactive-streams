@@ -82,7 +82,6 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     J.MethodInvocation replacement = JavaTemplate
                             .builder(template)
                             .contextSensitive()
-                            .doAfterVariableSubstitution(System.out::println)
                             .imports(DEFAULT_SIGNAL_LISTENER, SIGNAL_TYPE)
                             .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams-1.+"))
                             .build()
@@ -159,7 +158,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                             unidentifiedStatements.add(thenStatement);
                                         }
                                     }
-                                    errorStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                    addElseStatements(errorStatements, (J.If) olStmt);
                                 }
                                 if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
                                     for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
@@ -169,7 +168,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                             unidentifiedStatements.add(thenStatement);
                                         }
                                     }
-                                    resultStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                    addElseStatements(resultStatements, (J.If) olStmt);
                                 }
                             }
                             if ((ifCheck.getLeft() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getLeft(), errorIdentifier)) || (ifCheck.getRight() instanceof J.Identifier && identifiersEqual((J.Identifier) ifCheck.getRight(), errorIdentifier))) {
@@ -181,7 +180,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                             unidentifiedStatements.add(thenStatement);
                                         }
                                     }
-                                    resultStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                    addElseStatements(resultStatements, (J.If) olStmt);
                                 }
                                 if (ifCheck.getOperator().equals(J.Binary.Type.Equal)) {
                                     for (Statement thenStatement : ((J.Block) ((J.If) olStmt).getThenPart()).getStatements()) {
@@ -191,7 +190,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                                             unidentifiedStatements.add(thenStatement);
                                         }
                                     }
-                                    errorStatements.addAll(((J.Block) ((J.If) olStmt).getElsePart().getBody()).getStatements());
+                                    addElseStatements(errorStatements, (J.If) olStmt);
                                 }
                             }
                         }
@@ -210,6 +209,13 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     put(errorIdentifier, errorStatements);
                     put(null, unidentifiedStatements);
                 }};
+            }
+
+            private void addElseStatements(List<Statement> statements, J.If _if) {
+                J.If.Else _else = _if.getElsePart();
+                if (_else != null) {
+                    statements.addAll(((J.Block) _else.getBody()).getStatements());
+                }
             }
         });
     }
