@@ -100,9 +100,6 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
                           @Override
                           public synchronized void doOnComplete() {
-                              if (done) {
-                                  return;
-                              }
                               this.done = true;
                           }
 
@@ -193,9 +190,6 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
                           @Override
                           public synchronized void doOnComplete() {
-                              if (done) {
-                                  return;
-                              }
                               this.done = true;
                           }
 

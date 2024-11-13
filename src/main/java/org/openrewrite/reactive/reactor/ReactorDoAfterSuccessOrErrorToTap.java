@@ -143,9 +143,6 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "\n" +
                        "    @Override" +
                        "    public synchronized void doOnComplete() {" +
-                       "        if (done) {" +
-                       "            return;" +
-                       "        }" +
                        "        this.done = true;" +
                        "    }" +
                        "\n" +
