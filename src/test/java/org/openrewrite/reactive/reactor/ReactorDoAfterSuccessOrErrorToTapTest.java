@@ -138,4 +138,23 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
           )
         );
     }
+
+    @Test
+    void noChangeAndNoErrorOnNoLambda() {
+        //language=java
+        rewriteRun(
+          java(
+            """
+              import java.util.function.BiConsumer;
+              import reactor.core.publisher.Mono;
+
+              class SomeClass {
+                  void doSomething(Mono<String> mono, BiConsumer<String, Throwable> consumer) {
+                      mono.doAfterSuccessOrError(consumer).subscribe();
+                  }
+              }
+              """
+          )
+        );
+    }
 }
