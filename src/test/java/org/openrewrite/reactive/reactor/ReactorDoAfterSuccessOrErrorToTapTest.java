@@ -63,8 +63,6 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
               import reactor.core.publisher.SignalType;
               import reactor.util.context.Context;
 
-              import static reactor.core.publisher.SignalType.CANCEL;
-
               class SomeClass {
                   void doSomething(Mono<String> mono) {
                       mono.tap(() -> new DefaultSignalListener<>() {
@@ -80,7 +78,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                                   return;
                               }
                               processedOnce = true;
-                              if (signalType == CANCEL) {
+                              if (signalType == SignalType.CANCEL) {
                                   return;
                               }
                               if (error != null) {
@@ -140,7 +138,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
     }
 
     @Test
-    void noChangeAndNoErrorOnNoLambda() {
+    void refactorSuccessfullyWhenBiConsumerVariableIsUsed() {
         //language=java
         rewriteRun(
           java(
@@ -151,6 +149,80 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
               class SomeClass {
                   void doSomething(Mono<String> mono, BiConsumer<String, Throwable> consumer) {
                       mono.doAfterSuccessOrError(consumer).subscribe();
+                  }
+              }
+              """,
+            """
+              import java.util.function.BiConsumer;
+
+              import reactor.core.observability.DefaultSignalListener;
+              import reactor.core.publisher.Mono;
+              import reactor.core.publisher.Operators;
+              import reactor.core.publisher.SignalType;
+              import reactor.util.context.Context;
+
+              class SomeClass {
+                  void doSomething(Mono<String> mono, BiConsumer<String, Throwable> consumer) {
+                      mono.tap(() -> new DefaultSignalListener<>() {
+                          String result;
+                          Throwable error;
+                          boolean done;
+                          boolean processedOnce;
+                          Context currentContext;
+
+                          @Override
+                          public synchronized void doFinally(SignalType signalType) {
+                              if (processedOnce) {
+                                  return;
+                              }
+                              processedOnce = true;
+                              if (signalType == SignalType.CANCEL) {
+                                  return;
+                              }
+                              consumer.accept(result, error);
+                          }
+
+                          @Override
+                          public synchronized void doOnNext(String result) {
+                              if (done) {
+                                  Operators.onDiscard(result, currentContext);
+                                  return;
+                              }
+                              this.result = result;
+                          }
+
+                          @Override
+                          public synchronized void doOnComplete() {
+                              if (done) {
+                                  return;
+                              }
+                              this.done = true;
+                          }
+
+                          @Override
+                          public synchronized void doOnError(Throwable error) {
+                              if (done) {
+                                  Operators.onErrorDropped(error, currentContext);
+                              }
+                              this.error = error;
+                              this.done = true;
+                          }
+
+                          @Override
+                          public Context addToContext(Context originalContext) {
+                              currentContext = originalContext;
+                              return originalContext;
+                          }
+
+                          @Override
+                          public synchronized void doOnCancel() {
+                              if (done) return;
+                              this.done = true;
+                              if (result != null) {
+                                  Operators.onDiscard(result, currentContext);
+                              }
+                          }
+                      }).subscribe();
                   }
               }
               """

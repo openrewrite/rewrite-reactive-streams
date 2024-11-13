@@ -59,12 +59,11 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
             @Override
             public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                 J.MethodInvocation mi = super.visitMethodInvocation(method, ctx);
-                if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi) && mi.getArguments().get(0) instanceof J.Lambda) {
+                if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
                     J.MethodInvocation replacement = JavaTemplate
                             .builder(template(mi))
                             .contextSensitive()
                             .imports(DEFAULT_SIGNAL_LISTENER, OPERATORS, SIGNAL_TYPE, REACTOR_CONTEXT)
-                            .staticImports(SIGNAL_TYPE + ".CANCEL")
                             .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams-1.+"))
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect());
@@ -73,36 +72,46 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                     maybeAddImport(OPERATORS);
                     maybeAddImport(SIGNAL_TYPE);
                     maybeAddImport(REACTOR_CONTEXT);
-                    maybeAddImport(SIGNAL_TYPE, "CANCEL");
 
-                    List<Statement> originalStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
-
-                    mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
-                        if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
-                            J.NewClass dfltSgnlClass = (J.NewClass) ((J.Lambda) arg).getBody();
-                            arg = ((J.Lambda) arg).withBody(dfltSgnlClass.withBody(dfltSgnlClass.getBody().withStatements(ListUtils.map(dfltSgnlClass.getBody().getStatements(), stmt -> {
-                                if (stmt instanceof J.MethodDeclaration) {
-                                    J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
-                                    J.MethodDeclaration md = (J.MethodDeclaration) stmt;
-                                    if (DO_ON_FINALLY.matches(md, cd)) {
-                                        List<Statement> newStatements = ListUtils.concatAll(md.getBody().getStatements(), originalStatements);
-                                        stmt = md.withBody(md.getBody().withStatements(newStatements));
+                    if (mi.getArguments().get(0) instanceof J.Lambda) {
+                        List<Statement> originalStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
+                        mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
+                            if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
+                                J.NewClass dfltSgnlClass = (J.NewClass) ((J.Lambda) arg).getBody();
+                                arg = ((J.Lambda) arg).withBody(dfltSgnlClass.withBody(dfltSgnlClass.getBody().withStatements(ListUtils.map(dfltSgnlClass.getBody().getStatements(), stmt -> {
+                                    if (stmt instanceof J.MethodDeclaration) {
+                                        J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
+                                        J.MethodDeclaration md = (J.MethodDeclaration) stmt;
+                                        if (DO_ON_FINALLY.matches(md, cd)) {
+                                            List<Statement> newStatements = ListUtils.concatAll(md.getBody().getStatements(), originalStatements);
+                                            stmt = md.withBody(md.getBody().withStatements(newStatements));
+                                        }
                                     }
-                                }
-                                return stmt;
-                            }))));
-                        }
-                        return arg;
-                    }));
+                                    return stmt;
+                                }))));
+                            }
+                            return arg;
+                        }));
+                    } else {
+                        mi = replacement;
+                    }
                 }
                 return maybeAutoFormat(method, mi, ctx);
             }
 
             private String template(J.MethodInvocation mi) {
-                List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0)).getParameters().getParameters().stream().map(J.VariableDeclarations.class::cast).collect(Collectors.toList());
                 String clazz = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0)).getClassName();
-                String result = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName();
-                String error = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName();
+                String result = "result";
+                String error = "error";
+                String impl = "consumer.accept(result, error);";
+
+                if (mi.getArguments().get(0) instanceof J.Lambda) {
+                    List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0)).getParameters().getParameters().stream().map(J.VariableDeclarations.class::cast).collect(Collectors.toList());
+                    result = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName();
+                    error = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName();
+                    impl = "";
+                }
+
                 //language=java
                 return "#{any()}.tap(() -> new DefaultSignalListener<>() {" +
                        "    " + clazz + " " + result + ";" +
@@ -117,9 +126,10 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "          return;" +
                        "      }" +
                        "      processedOnce = true;" +
-                       "      if (signalType == CANCEL) {" +
+                       "      if (signalType == SignalType.CANCEL) {" +
                        "          return;" +
                        "      }" +
+                       "      " + impl +
                        "    }" +
                        "\n" +
                        "    @Override" +
