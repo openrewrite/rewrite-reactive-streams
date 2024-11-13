@@ -108,7 +108,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
 
             class SomeClass {
-                void doSomething(Mono<String> mono) {
+                void doSomething(Mono<Integer> mono) {
                     mono.doAfterSuccessOrError((result, error) -> {
                     }).subscribe();
                 }
@@ -122,9 +122,9 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import static reactor.core.publisher.SignalType.CANCEL;
 
             class SomeClass {
-                void doSomething(Mono<String> mono) {
+                void doSomething(Mono<Integer> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
+                        Integer result;
                         Throwable error;
 
                         @Override
@@ -135,7 +135,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                         }
 
                         @Override
-                        public void doOnNext(String result) {
+                        public void doOnNext(Integer result) {
                             this.result = result;
                         }
 
