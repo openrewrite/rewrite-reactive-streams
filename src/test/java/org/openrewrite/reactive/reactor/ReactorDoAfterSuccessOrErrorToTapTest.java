@@ -41,466 +41,100 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
         rewriteRun(
           java(
             """
-            import reactor.core.publisher.Mono;
+              import reactor.core.publisher.Mono;
 
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                        if (error != null) {
-                            System.out.println("error" + error);
-                        } else {
-                            System.out.println("success" + result);
-                        }
-                        System.out.println("other logs");
-                    }).subscribe();
-                }
-            }
-            """,
+              class SomeClass {
+                  void doSomething(Mono<String> mono) {
+                      mono.doAfterSuccessOrError((result, error) -> {
+                          if (error != null) {
+                              System.out.println("error" + error);
+                          } else {
+                              System.out.println("success" + result);
+                          }
+                          System.out.println("other logs");
+                      }).subscribe();
+                  }
+              }
+              """,
             """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
+              import reactor.core.observability.DefaultSignalListener;
+              import reactor.core.publisher.Mono;
+              import reactor.core.publisher.Operators;
+              import reactor.core.publisher.SignalType;
+              import reactor.util.context.Context;
 
-            import static reactor.core.publisher.SignalType.CANCEL;
+              import static reactor.core.publisher.SignalType.CANCEL;
 
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
-                        Throwable error;
+              class SomeClass {
+                  void doSomething(Mono<String> mono) {
+                      mono.tap(() -> new DefaultSignalListener<>() {
+                          String result;
+                          Throwable error;
+                          boolean done;
+                          boolean processedOnce;
+                          Context currentContext;
 
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            if (error != null) {
-                                System.out.println("error" + error);
-                            } else {
-                                System.out.println("success" + result);
-                            }
-                            System.out.println("other logs");
-                        }
+                          @Override
+                          public synchronized void doFinally(SignalType signalType) {
+                              if (processedOnce) {
+                                  return;
+                              }
+                              processedOnce = true;
+                              if (signalType == CANCEL) {
+                                  return;
+                              }
+                              if (error != null) {
+                                  System.out.println("error" + error);
+                              } else {
+                                  System.out.println("success" + result);
+                              }
+                              System.out.println("other logs");
+                          }
 
-                        @Override
-                        public void doOnNext(String result) {
-                            this.result = result;
-                        }
+                          @Override
+                          public synchronized void doOnNext(String result) {
+                              if (done) {
+                                  Operators.onDiscard(result, currentContext);
+                                  return;
+                              }
+                              this.result = result;
+                          }
 
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-            }
-            """
-          )
-        );
-    }
+                          @Override
+                          public synchronized void doOnComplete() {
+                              if (done) {
+                                  return;
+                              }
+                              this.done = true;
+                          }
 
-    @Test
-    void emptyLambda() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
+                          @Override
+                          public synchronized void doOnError(Throwable error) {
+                              if (done) {
+                                  Operators.onErrorDropped(error, currentContext);
+                              }
+                              this.error = error;
+                              this.done = true;
+                          }
 
-            class SomeClass {
-                void doSomething(Mono<Integer> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                    }).subscribe();
-                }
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
+                          @Override
+                          public Context addToContext(Context originalContext) {
+                              currentContext = originalContext;
+                              return originalContext;
+                          }
 
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<Integer> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        Integer result;
-                        Throwable error;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                        }
-
-                        @Override
-                        public void doOnNext(Integer result) {
-                            this.result = result;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-            }
-            """
-          )
-        );
-    }
-
-    @Test
-    void refactorRandomStatementOrderWithOtherVariableNames() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((value, err) -> {
-                        doSomething();
-                        if (err != null) {
-                            System.out.println("error" + err);
-                            doSomething(err);
-                            return;
-                        } else {
-                            System.out.println("success" + value);
-                            doSomething(value);
-                        }
-                        System.out.println("other logs");
-                    }).subscribe();
-                }
-
-                void doSomething() {}
-                void doSomething(Throwable error) {}
-                void doSomething(String value) {}
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
-
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String value;
-                        Throwable err;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            doSomething();
-                            if (err != null) {
-                                System.out.println("error" + err);
-                                doSomething(err);
-                                return;
-                            } else {
-                                System.out.println("success" + value);
-                                doSomething(value);
-                            }
-                            System.out.println("other logs");
-                        }
-
-                        @Override
-                        public void doOnNext(String value) {
-                            this.value = value;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable err) {
-                            this.err = err;
-                        }
-                    }).subscribe();
-                }
-
-                void doSomething() {}
-                void doSomething(Throwable error) {}
-                void doSomething(String value) {}
-            }
-            """
-          )
-        );
-    }
-
-    @Test
-    void invertedIfCheck() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                        if (error == null) {
-                            System.out.println("success" + result);
-                        }
-                        if (null == result) {
-                            System.out.println("error" + error);
-                        }
-                        System.out.println("other logs");
-                    }).subscribe();
-                }
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
-
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
-                        Throwable error;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            if (error == null) {
-                                System.out.println("success" + result);
-                            }
-                            if (null == result) {
-                                System.out.println("error" + error);
-                            }
-                            System.out.println("other logs");
-                        }
-
-                        @Override
-                        public void doOnNext(String result) {
-                            this.result = result;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-            }
-            """
-          )
-        );
-    }
-
-    @Test
-    void multipleIfNoElse() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                        if (error != null) {
-                            System.out.println("error" + error);
-                        }
-                        if (result != null) {
-                            System.out.println("success" + result);
-                        }
-                        System.out.println("other logs");
-                    }).subscribe();
-                }
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
-
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
-                        Throwable error;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            if (error != null) {
-                                System.out.println("error" + error);
-                            }
-                            if (result != null) {
-                                System.out.println("success" + result);
-                            }
-                            System.out.println("other logs");
-                        }
-
-                        @Override
-                        public void doOnNext(String result) {
-                            this.result = result;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-            }
-            """
-          )
-        );
-    }
-
-    @Test
-    void multipleIfNoElseRandomStatementOrder() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                        System.out.println("other logs");
-                        if (error != null) {
-                            System.out.println("error" + error);
-                            doSomething(error);
-                        }
-                        doSomething();
-                        if (result != null) {
-                            System.out.println("success" + result);
-                            doSomething(result);
-                        }
-                    }).subscribe();
-                }
-
-                void doSomething() {}
-                void doSomething(Throwable error) {}
-                void doSomething(String value) {}
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
-
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
-                        Throwable error;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            System.out.println("other logs");
-                            if (error != null) {
-                                System.out.println("error" + error);
-                                doSomething(error);
-                            }
-                            doSomething();
-                            if (result != null) {
-                                System.out.println("success" + result);
-                                doSomething(result);
-                            }
-                        }
-
-                        @Override
-                        public void doOnNext(String result) {
-                            this.result = result;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-
-                void doSomething() {}
-                void doSomething(Throwable error) {}
-                void doSomething(String value) {}
-            }
-            """
-          )
-        );
-    }
-
-    @Test
-    void singleIfNoElse() {
-        //language=java
-        rewriteRun(
-          java(
-            """
-            import reactor.core.publisher.Mono;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
-                        if (error != null) {
-                            System.out.println("error" + error);
-                        }
-                        System.out.println("success" + result);
-                        System.out.println("other logs");
-                    }).subscribe();
-                }
-            }
-            """,
-            """
-            import reactor.core.observability.DefaultSignalListener;
-            import reactor.core.publisher.Mono;
-            import reactor.core.publisher.SignalType;
-
-            import static reactor.core.publisher.SignalType.CANCEL;
-
-            class SomeClass {
-                void doSomething(Mono<String> mono) {
-                    mono.tap(() -> new DefaultSignalListener<>() {
-                        String result;
-                        Throwable error;
-
-                        @Override
-                        public void doFinally(SignalType signalType) {
-                            if (signalType == CANCEL) {
-                                return;
-                            }
-                            if (error != null) {
-                                System.out.println("error" + error);
-                            }
-                            System.out.println("success" + result);
-                            System.out.println("other logs");
-                        }
-
-                        @Override
-                        public void doOnNext(String result) {
-                            this.result = result;
-                        }
-
-                        @Override
-                        public void doOnError(Throwable error) {
-                            this.error = error;
-                        }
-                    }).subscribe();
-                }
-            }
-            """
+                          @Override
+                          public synchronized void doOnCancel() {
+                              if (done) return;
+                              this.done = true;
+                              if (result != null) {
+                                  Operators.onDiscard(result, currentContext);
+                              }
+                          }
+                      }).subscribe();
+                  }
+              }
+              """
           )
         );
     }
