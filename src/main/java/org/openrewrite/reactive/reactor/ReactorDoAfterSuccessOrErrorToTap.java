@@ -69,7 +69,10 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                             .build()
                             .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect());
 
-                    maybeAddImports(DEFAULT_SIGNAL_LISTENER, OPERATORS, SIGNAL_TYPE, REACTOR_CONTEXT);
+                    maybeAddImport(DEFAULT_SIGNAL_LISTENER);
+                    maybeAddImport(OPERATORS);
+                    maybeAddImport(SIGNAL_TYPE);
+                    maybeAddImport(REACTOR_CONTEXT);
                     maybeAddImport(SIGNAL_TYPE, "CANCEL");
 
                     List<Statement> originalStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
@@ -100,72 +103,66 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 String clazz = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0)).getClassName();
                 String result = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName();
                 String error = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName();
-
+                //language=java
                 return "#{any()}.tap(() -> new DefaultSignalListener<>() {" +
-                        "    " + clazz + " " + result + ";"+
-                        "    Throwable " + error + ";"+
-                        "    boolean done;"+
-                        "    boolean processedOnce;"+
-                        "    Context currentContext;"+
-                        "\n" +
-                        "    @Override" +
-                        "    public synchronized void doFinally(SignalType signalType) {" +
-                        "      if (processedOnce) {" +
-                        "          return;" +
-                        "      }" +
-                        "      processedOnce = true;" +
-                        "      if (signalType == CANCEL) {" +
-                        "          return;" +
-                        "      }" +
-                        "    }" +
-                        "\n" +
-                        "    @Override" +
-                        "    public synchronized void doOnNext(" + clazz + " " + result + ") {" +
-                        "        if (done) {" +
-                        "            Operators.onDiscard(" + result + ", currentContext);" +
-                        "            return;" +
-                        "        }" +
-                        "        this." + result + " = " + result + ";" +
-                        "    }" +
-                        "\n" +
-                        "    @Override" +
-                        "    public synchronized void doOnComplete() {" +
-                        "        if (done) {" +
-                        "            return;" +
-                        "        }" +
-                        "        this.done = true;" +
-                        "    }" +
-                        "\n" +
-                        "    @Override" +
-                        "    public synchronized void doOnError(Throwable " + error + ") {" +
-                        "        if (done) {" +
-                        "            Operators.onErrorDropped(" + error + ", currentContext);" +
-                        "        }" +
-                        "        this." + error + " = " + error + ";" +
-                        "        this.done = true;" +
-                        "    }" +
-                        "\n" +
-                        "    @Override" +
-                        "    public Context addToContext(Context originalContext) {" +
-                        "        currentContext = originalContext;" +
-                        "        return originalContext;" +
-                        "    }" +
-                        "\n" +
-                        "    @Override" +
-                        "    public synchronized void doOnCancel() {" +
-                        "        if (done) return;" +
-                        "        this.done = true;" +
-                        "        if (" + result + " != null) {" +
-                        "            Operators.onDiscard(" + result + ", currentContext);" +
-                        "        }" +
-                        "    }" +
-                        "})";
-            }
-
-            private void maybeAddImports(String... fullyQualifiedName) {
-                for (String s : fullyQualifiedName) {
-                    maybeAddImport(s);
-                }
+                       "    " + clazz + " " + result + ";" +
+                       "    Throwable " + error + ";" +
+                       "    boolean done;" +
+                       "    boolean processedOnce;" +
+                       "    Context currentContext;" +
+                       "\n" +
+                       "    @Override" +
+                       "    public synchronized void doFinally(SignalType signalType) {" +
+                       "      if (processedOnce) {" +
+                       "          return;" +
+                       "      }" +
+                       "      processedOnce = true;" +
+                       "      if (signalType == CANCEL) {" +
+                       "          return;" +
+                       "      }" +
+                       "    }" +
+                       "\n" +
+                       "    @Override" +
+                       "    public synchronized void doOnNext(" + clazz + " " + result + ") {" +
+                       "        if (done) {" +
+                       "            Operators.onDiscard(" + result + ", currentContext);" +
+                       "            return;" +
+                       "        }" +
+                       "        this." + result + " = " + result + ";" +
+                       "    }" +
+                       "\n" +
+                       "    @Override" +
+                       "    public synchronized void doOnComplete() {" +
+                       "        if (done) {" +
+                       "            return;" +
+                       "        }" +
+                       "        this.done = true;" +
+                       "    }" +
+                       "\n" +
+                       "    @Override" +
+                       "    public synchronized void doOnError(Throwable " + error + ") {" +
+                       "        if (done) {" +
+                       "            Operators.onErrorDropped(" + error + ", currentContext);" +
+                       "        }" +
+                       "        this." + error + " = " + error + ";" +
+                       "        this.done = true;" +
+                       "    }" +
+                       "\n" +
+                       "    @Override" +
+                       "    public Context addToContext(Context originalContext) {" +
+                       "        currentContext = originalContext;" +
+                       "        return originalContext;" +
+                       "    }" +
+                       "\n" +
+                       "    @Override" +
+                       "    public synchronized void doOnCancel() {" +
+                       "        if (done) return;" +
+                       "        this.done = true;" +
+                       "        if (" + result + " != null) {" +
+                       "            Operators.onDiscard(" + result + ", currentContext);" +
+                       "        }" +
+                       "    }" +
+                       "})";
             }
         });
     }
