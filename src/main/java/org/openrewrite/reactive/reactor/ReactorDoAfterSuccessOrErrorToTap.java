@@ -15,6 +15,7 @@
  */
 package org.openrewrite.reactive.reactor;
 
+import org.jspecify.annotations.Nullable;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.Preconditions;
 import org.openrewrite.Recipe;
@@ -59,7 +60,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
             @Override
             public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                 J.MethodInvocation mi = super.visitMethodInvocation(method, ctx);
-                if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
+                if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi) && mi.getArguments().get(0) instanceof J.Lambda) {
                     J.MethodInvocation replacement = JavaTemplate
                             .builder(template(mi))
                             .contextSensitive()
