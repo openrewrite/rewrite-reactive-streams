@@ -61,22 +61,35 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
+                            if (error != null) {
+                                System.out.println("error" + error);
+                            } else {
+                                System.out.println("success" + result);
+                            }
                             System.out.println("other logs");
                         }
 
                         @Override
                         public void doOnNext(String result) {
-                            System.out.println("success" + result);
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
+                            this.error = error;
                         }
                     }).subscribe();
                 }
@@ -106,19 +119,29 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
                         }
 
                         @Override
                         public void doOnNext(String result) {
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
+                            this.error = error;
                         }
                     }).subscribe();
                 }
@@ -129,7 +152,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
     }
 
     @Test
-    void refactorRandomStatementOrder() {
+    void refactorRandomStatementOrderWithOtherVariableNames() {
         //language=java
         rewriteRun(
           java(
@@ -138,27 +161,23 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
             class SomeClass {
                 void doSomething(Mono<String> mono) {
-                    mono.doAfterSuccessOrError((result, error) -> {
+                    mono.doAfterSuccessOrError((value, err) -> {
                         doSomething();
-                        if (error != null) {
-                            System.out.println("error" + error);
-                            doSomething(error);
+                        if (err != null) {
+                            System.out.println("error" + err);
+                            doSomething(err);
+                            return;
                         } else {
-                            System.out.println("success" + result);
-                            doSomething(result);
+                            System.out.println("success" + value);
+                            doSomething(value);
                         }
                         System.out.println("other logs");
                     }).subscribe();
                 }
 
-                void doSomething(){
-                }
-
-                void doSomething(Throwable error){
-                }
-
-                void doSomething(String value){
-                }
+                void doSomething() {}
+                void doSomething(Throwable error) {}
+                void doSomething(String value) {}
             }
             """,
             """
@@ -166,37 +185,46 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String value;
+                        Throwable err;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
                             doSomething();
+                            if (err != null) {
+                                System.out.println("error" + err);
+                                doSomething(err);
+                                return;
+                            } else {
+                                System.out.println("success" + value);
+                                doSomething(value);
+                            }
                             System.out.println("other logs");
                         }
 
                         @Override
-                        public void doOnNext(String result) {
-                            System.out.println("success" + result);
-                            doSomething(result);
+                        public void doOnNext(String value) {
+                            this.value = value;
                         }
 
                         @Override
-                        public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
-                            doSomething(error);
+                        public void doOnError(Throwable err) {
+                            this.err = err;
                         }
                     }).subscribe();
                 }
 
-                void doSomething(){
-                }
-
-                void doSomething(Throwable error){
-                }
-
-                void doSomething(String value){
-                }
+                void doSomething() {}
+                void doSomething(Throwable error) {}
+                void doSomething(String value) {}
             }
             """
           )
@@ -230,22 +258,36 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
+                            if (error == null) {
+                                System.out.println("success" + result);
+                            }
+                            if (null == result) {
+                                System.out.println("error" + error);
+                            }
                             System.out.println("other logs");
                         }
 
                         @Override
                         public void doOnNext(String result) {
-                            System.out.println("success" + result);
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
+                            this.error = error;
                         }
                     }).subscribe();
                 }
@@ -269,7 +311,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                         if (error != null) {
                             System.out.println("error" + error);
                         }
-                        if (result != null){
+                        if (result != null) {
                             System.out.println("success" + result);
                         }
                         System.out.println("other logs");
@@ -282,22 +324,36 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
+                            if (error != null) {
+                                System.out.println("error" + error);
+                            }
+                            if (result != null) {
+                                System.out.println("success" + result);
+                            }
                             System.out.println("other logs");
                         }
 
                         @Override
                         public void doOnNext(String result) {
-                            System.out.println("success" + result);
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
+                            this.error = error;
                         }
                     }).subscribe();
                 }
@@ -324,21 +380,16 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                             doSomething(error);
                         }
                         doSomething();
-                        if (result != null){
+                        if (result != null) {
                             System.out.println("success" + result);
                             doSomething(result);
                         }
                     }).subscribe();
                 }
 
-                void doSomething(){
-                }
-
-                void doSomething(Throwable error){
-                }
-
-                void doSomething(String value){
-                }
+                void doSomething() {}
+                void doSomething(Throwable error) {}
+                void doSomething(String value) {}
             }
             """,
             """
@@ -346,37 +397,46 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
                             System.out.println("other logs");
+                            if (error != null) {
+                                System.out.println("error" + error);
+                                doSomething(error);
+                            }
                             doSomething();
+                            if (result != null) {
+                                System.out.println("success" + result);
+                                doSomething(result);
+                            }
                         }
 
                         @Override
                         public void doOnNext(String result) {
-                            System.out.println("success" + result);
-                            doSomething(result);
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
-                            doSomething(error);
+                            this.error = error;
                         }
                     }).subscribe();
                 }
 
-                void doSomething(){
-                }
-
-                void doSomething(Throwable error){
-                }
-
-                void doSomething(String value){
-                }
+                void doSomething() {}
+                void doSomething(Throwable error) {}
+                void doSomething(String value) {}
             }
             """
           )
@@ -408,22 +468,34 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
             import reactor.core.publisher.Mono;
             import reactor.core.publisher.SignalType;
 
+            import static reactor.core.publisher.SignalType.CANCEL;
+
             class SomeClass {
                 void doSomething(Mono<String> mono) {
                     mono.tap(() -> new DefaultSignalListener<>() {
+                        String result;
+                        Throwable error;
+
                         @Override
-                        public void doFinally(SignalType terminationType) {
+                        public void doFinally(SignalType signalType) {
+                            if (signalType == CANCEL) {
+                                return;
+                            }
+                            if (error != null) {
+                                System.out.println("error" + error);
+                            }
+                            System.out.println("success" + result);
                             System.out.println("other logs");
                         }
 
                         @Override
                         public void doOnNext(String result) {
-                            System.out.println("success" + result);
+                            this.result = result;
                         }
 
                         @Override
                         public void doOnError(Throwable error) {
-                            System.out.println("error" + error);
+                            this.error = error;
                         }
                     }).subscribe();
                 }
