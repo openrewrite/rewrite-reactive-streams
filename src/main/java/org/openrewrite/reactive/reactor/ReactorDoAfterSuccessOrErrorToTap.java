@@ -150,6 +150,7 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "    public synchronized void doOnError(Throwable " + error + ") {" +
                        "        if (done) {" +
                        "            Operators.onErrorDropped(" + error + ", currentContext);" +
+                       "            return;" +
                        "        }" +
                        "        this." + error + " = " + error + ";" +
                        "        this.done = true;" +

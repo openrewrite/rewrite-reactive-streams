@@ -107,6 +107,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                           public synchronized void doOnError(Throwable error) {
                               if (done) {
                                   Operators.onErrorDropped(error, currentContext);
+                                  return;
                               }
                               this.error = error;
                               this.done = true;
@@ -197,6 +198,7 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
                           public synchronized void doOnError(Throwable error) {
                               if (done) {
                                   Operators.onErrorDropped(error, currentContext);
+                                  return;
                               }
                               this.error = error;
                               this.done = true;
