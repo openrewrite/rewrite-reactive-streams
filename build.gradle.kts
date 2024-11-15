@@ -30,5 +30,6 @@ dependencies {
 recipeDependencies {
     parserClasspath("org.reactivestreams:reactive-streams:1.0.4")
     parserClasspath("io.projectreactor:reactor-core:3.4.39")
+    parserClasspath("io.projectreactor:reactor-test:3.4.39")
     parserClasspath("io.projectreactor:reactor-core:3.5.20")
 }
