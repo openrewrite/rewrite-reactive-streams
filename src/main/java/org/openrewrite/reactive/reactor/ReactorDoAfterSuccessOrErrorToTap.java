@@ -25,10 +25,7 @@ import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaTemplate;
 import org.openrewrite.java.MethodMatcher;
 import org.openrewrite.java.search.UsesMethod;
-import org.openrewrite.java.tree.J;
-import org.openrewrite.java.tree.JavaType;
-import org.openrewrite.java.tree.Statement;
-import org.openrewrite.java.tree.TypeUtils;
+import org.openrewrite.java.tree.*;
 
 import java.util.List;
 
@@ -61,8 +58,16 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
             public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                 J.MethodInvocation mi = super.visitMethodInvocation(method, ctx);
                 if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
+                    boolean argumentLambda = mi.getArguments().get(0) instanceof J.Lambda;
+
+                    Object[] templateArgs = {mi.getSelect()};
+                    if (!argumentLambda) {
+                        templateArgs = new Expression[]{mi.getSelect(), mi.getArguments().get(0)};
+                    }
+
+                    String signalListenerTemplate = newDefaultSignalListenerTemplate(mi);
                     J.MethodInvocation replacement = JavaTemplate
-                            .builder("#{any()}.tap(() -> " + newDefaultSignalListenerTemplate(mi) + ")")
+                            .builder("#{any()}.tap(() -> " + signalListenerTemplate + ")")
                             .contextSensitive()
                             .imports(
                                     DEFAULT_SIGNAL_LISTENER,
@@ -72,14 +77,14 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                             )
                             .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams-1.+"))
                             .build()
-                            .apply(updateCursor(mi), mi.getCoordinates().replace(), mi.getSelect());
+                            .apply(updateCursor(mi), mi.getCoordinates().replace(), templateArgs);
 
                     maybeAddImport(DEFAULT_SIGNAL_LISTENER);
                     maybeAddImport(OPERATORS);
                     maybeAddImport(SIGNAL_TYPE);
                     maybeAddImport(REACTOR_CONTEXT);
 
-                    if (mi.getArguments().get(0) instanceof J.Lambda) {
+                    if (argumentLambda) {
                         List<Statement> originalStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
                         mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
                             if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
@@ -107,14 +112,15 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 return mi;
             }
 
-            private String newDefaultSignalListenerTemplate(J.MethodInvocation mi) {
-                String clazz = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0)).getClassName();
+            private String newDefaultSignalListenerTemplate(J.MethodInvocation doAfterSuccessOrError) {
+                String clazz = TypeUtils.asFullyQualified(((JavaType.Parameterized) doAfterSuccessOrError.getMethodType().getReturnType()).getTypeParameters().get(0)).getClassName();
                 String result = "result";
                 String error = "error";
-                String impl = "consumer.accept(result, error);";
+                String impl = "#{any()}.accept(result, error);";
 
-                if (mi.getArguments().get(0) instanceof J.Lambda) {
-                    List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0))
+                Expression firstArgument = doAfterSuccessOrError.getArguments().get(0);
+                if (firstArgument instanceof J.Lambda) {
+                    List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) firstArgument)
                             .getParameters().getParameters().stream()
                             .map(J.VariableDeclarations.class::cast)
                             .collect(toList());
