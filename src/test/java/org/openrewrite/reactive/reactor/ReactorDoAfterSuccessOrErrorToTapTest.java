@@ -121,7 +121,9 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
                           @Override
                           public synchronized void doOnCancel() {
-                              if (done) return;
+                              if (done) {
+                                  return;
+                              }
                               this.done = true;
                               if (result != null) {
                                   Operators.onDiscard(result, currentContext);
@@ -212,7 +214,9 @@ class ReactorDoAfterSuccessOrErrorToTapTest implements RewriteTest {
 
                           @Override
                           public synchronized void doOnCancel() {
-                              if (done) return;
+                              if (done) {
+                                  return;
+                              }
                               this.done = true;
                               if (result != null) {
                                   Operators.onDiscard(result, currentContext);

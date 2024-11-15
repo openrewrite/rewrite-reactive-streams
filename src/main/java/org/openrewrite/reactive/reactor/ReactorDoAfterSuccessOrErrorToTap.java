@@ -31,7 +31,8 @@ import org.openrewrite.java.tree.Statement;
 import org.openrewrite.java.tree.TypeUtils;
 
 import java.util.List;
-import java.util.stream.Collectors;
+
+import static java.util.stream.Collectors.toList;
 
 public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
 
@@ -61,12 +62,17 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                 J.MethodInvocation mi = super.visitMethodInvocation(method, ctx);
                 if (DO_AFTER_SUCCESS_OR_ERROR.matches(mi)) {
                     J.MethodInvocation replacement = JavaTemplate
-                            .builder(template(mi))
+                            .builder("#{any()}.tap(() -> " + newDefaultSignalListenerTemplate(mi) + ")")
                             .contextSensitive()
-                            .imports(DEFAULT_SIGNAL_LISTENER, OPERATORS, SIGNAL_TYPE, REACTOR_CONTEXT)
+                            .imports(
+                                    DEFAULT_SIGNAL_LISTENER,
+                                    OPERATORS,
+                                    SIGNAL_TYPE,
+                                    REACTOR_CONTEXT
+                            )
                             .javaParser(JavaParser.fromJavaVersion().classpathFromResources(ctx, "reactor-core-3.5.+", "reactive-streams-1.+"))
                             .build()
-                            .apply(getCursor(), mi.getCoordinates().replace(), mi.getSelect());
+                            .apply(updateCursor(mi), mi.getCoordinates().replace(), mi.getSelect());
 
                     maybeAddImport(DEFAULT_SIGNAL_LISTENER);
                     maybeAddImport(OPERATORS);
@@ -77,49 +83,53 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                         List<Statement> originalStatements = ((J.Block) ((J.Lambda) mi.getArguments().get(0)).getBody()).getStatements();
                         mi = replacement.withArguments(ListUtils.map(replacement.getArguments(), arg -> {
                             if (arg instanceof J.Lambda && ((J.Lambda) arg).getBody() instanceof J.NewClass) {
-                                J.NewClass dfltSgnlClass = (J.NewClass) ((J.Lambda) arg).getBody();
-                                arg = ((J.Lambda) arg).withBody(dfltSgnlClass.withBody(dfltSgnlClass.getBody().withStatements(ListUtils.map(dfltSgnlClass.getBody().getStatements(), stmt -> {
-                                    if (stmt instanceof J.MethodDeclaration) {
-                                        J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
-                                        J.MethodDeclaration md = (J.MethodDeclaration) stmt;
-                                        if (DO_ON_FINALLY.matches(md, cd)) {
-                                            List<Statement> newStatements = ListUtils.concatAll(md.getBody().getStatements(), originalStatements);
-                                            stmt = md.withBody(md.getBody().withStatements(newStatements));
-                                        }
-                                    }
-                                    return stmt;
-                                }))));
+                                J.NewClass defaultSignalClass = (J.NewClass) ((J.Lambda) arg).getBody();
+                                arg = ((J.Lambda) arg).withBody(defaultSignalClass.withBody(defaultSignalClass.getBody()
+                                        .withStatements(ListUtils.map(defaultSignalClass.getBody().getStatements(), stmt -> {
+                                            if (stmt instanceof J.MethodDeclaration) {
+                                                J.ClassDeclaration cd = getCursor().firstEnclosing(J.ClassDeclaration.class);
+                                                J.MethodDeclaration md = (J.MethodDeclaration) stmt;
+                                                if (DO_ON_FINALLY.matches(md, cd)) {
+                                                    List<Statement> newStatements = ListUtils.concatAll(md.getBody().getStatements(), originalStatements);
+                                                    stmt = md.withBody(md.getBody().withStatements(newStatements));
+                                                }
+                                            }
+                                            return stmt;
+                                        }))));
                             }
                             return arg;
                         }));
                     } else {
                         mi = replacement;
                     }
+                    return maybeAutoFormat(method, mi, ctx);
                 }
-                return maybeAutoFormat(method, mi, ctx);
+                return mi;
             }
 
-            private String template(J.MethodInvocation mi) {
+            private String newDefaultSignalListenerTemplate(J.MethodInvocation mi) {
                 String clazz = TypeUtils.asFullyQualified(((JavaType.Parameterized) mi.getMethodType().getReturnType()).getTypeParameters().get(0)).getClassName();
                 String result = "result";
                 String error = "error";
                 String impl = "consumer.accept(result, error);";
 
                 if (mi.getArguments().get(0) instanceof J.Lambda) {
-                    List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0)).getParameters().getParameters().stream().map(J.VariableDeclarations.class::cast).collect(Collectors.toList());
+                    List<J.VariableDeclarations> doAfterSuccessOrErrorLambdaParams = ((J.Lambda) mi.getArguments().get(0))
+                            .getParameters().getParameters().stream()
+                            .map(J.VariableDeclarations.class::cast)
+                            .collect(toList());
                     result = doAfterSuccessOrErrorLambdaParams.get(0).getVariables().get(0).getSimpleName();
                     error = doAfterSuccessOrErrorLambdaParams.get(1).getVariables().get(0).getSimpleName();
                     impl = "";
                 }
 
                 //language=java
-                return "#{any()}.tap(() -> new DefaultSignalListener<>() {" +
+                return "new DefaultSignalListener<>() {" +
                        "    " + clazz + " " + result + ";" +
                        "    Throwable " + error + ";" +
                        "    boolean done;" +
                        "    boolean processedOnce;" +
                        "    Context currentContext;" +
-                       "\n" +
                        "    @Override" +
                        "    public synchronized void doFinally(SignalType signalType) {" +
                        "      if (processedOnce) {" +
@@ -131,7 +141,6 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "      }" +
                        "      " + impl +
                        "    }" +
-                       "\n" +
                        "    @Override" +
                        "    public synchronized void doOnNext(" + clazz + " " + result + ") {" +
                        "        if (done) {" +
@@ -140,12 +149,10 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "        }" +
                        "        this." + result + " = " + result + ";" +
                        "    }" +
-                       "\n" +
                        "    @Override" +
                        "    public synchronized void doOnComplete() {" +
                        "        this.done = true;" +
                        "    }" +
-                       "\n" +
                        "    @Override" +
                        "    public synchronized void doOnError(Throwable " + error + ") {" +
                        "        if (done) {" +
@@ -155,22 +162,22 @@ public class ReactorDoAfterSuccessOrErrorToTap extends Recipe {
                        "        this." + error + " = " + error + ";" +
                        "        this.done = true;" +
                        "    }" +
-                       "\n" +
                        "    @Override" +
                        "    public Context addToContext(Context originalContext) {" +
                        "        currentContext = originalContext;" +
                        "        return originalContext;" +
                        "    }" +
-                       "\n" +
                        "    @Override" +
                        "    public synchronized void doOnCancel() {" +
-                       "        if (done) return;" +
+                       "        if (done) {" +
+                       "            return;" +
+                       "        }" +
                        "        this.done = true;" +
                        "        if (" + result + " != null) {" +
                        "            Operators.onDiscard(" + result + ", currentContext);" +
                        "        }" +
                        "    }" +
-                       "})";
+                       "}";
             }
         });
     }
