@@ -27,6 +27,7 @@ recipeList:
       newVersion: 3.5.x
   - org.openrewrite.reactive.reactor.ReactorProcessorCreateToSinkRecipes
   - org.openrewrite.reactive.reactor.ReactorProcessorCacheToSinkRecipes
+  - org.openrewrite.reactive.reactor.ReactorDoAfterSuccessOrErrorToTap
   - org.openrewrite.java.ChangeMethodName:
       methodPattern: reactor.core.publisher.*Sink currentContext()
       newMethodName: contextView
